@@ -73,7 +73,12 @@ struct tcpprobe_stat {
 	u64 reset_flows; /* Number of FIN/RST received that caused to purge the flow */
 };
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,33)
 #define TCPPROBE_STAT_INC(count) (__get_cpu_var(tcpprobe_stat).count++)
+#else
+#define TCPPROBE_STAT_INC(count) __this_cpu_add(tcpprobe_stat.count, 1)
+#endif
+
 
 enum {
 	LOG_RECV = 0,
