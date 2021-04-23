@@ -3,7 +3,7 @@
 This program aims to probe TCP variables in the kernel space.
 It is based on [Lyatiss's tcp_probe_plus](https://github.com/lyatiss/tcp_probe_plus) project.
 I have enhanced his code to probe more variables.
-It has been tested on Linux 5.11.2.
+It has been tested on Arch Linux with Linux 5.11.16.
 
 ## Requirements
 1. Linux kernel headers to compile kernel module

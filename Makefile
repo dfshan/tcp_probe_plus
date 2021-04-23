@@ -1,5 +1,5 @@
 obj-m += tcpprobe_plus.o
-tcpprobe_plus-y := hooks.o sysctl.o stat.o tcp_hash.o ftrace_hook.o tcp_cubic.o tcp_bbr.o tcp_cbr.o tcp_bbr2.o main.o
+tcpprobe_plus-y := hooks.o sysctl.o stat.o tcp_hash.o ftrace_hook.o tcp_cubic.o tcp_bbr.o tcp_bbr2.o main.o
 
 all: modules
 
