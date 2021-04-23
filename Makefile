@@ -1,10 +1,5 @@
-
-#This won't work if the CONFIG_NET_TCPPROBE isn't already configured 
-#for the kernel 
-#obj-$(CONFIG_NET_TCPPROBE) += tcp_probe.o
-
-obj-m += tcp_probe_plus.o
-tcp_probe_plus-y := jprobe.o sysctl.o stat.o tcp_hash.o main.o
+obj-m += tcpprobe_plus.o
+tcpprobe_plus-y := hooks.o sysctl.o stat.o tcp_hash.o ftrace_hook.o tcp_cubic.o tcp_bbr.o tcp_cbr.o tcp_bbr2.o main.o
 
 all: modules
 

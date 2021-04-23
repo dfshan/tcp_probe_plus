@@ -1,149 +1,79 @@
-# tcp_probe_plus Linux Kernel Module
-
-## TODO
-
-- [x] Detect Timeout
-- [x] Get `User Agent` for received packets
-- [x] Detect Retransmissions
-- [x] Probe packets on connection setup
-- [x] Calculate RTT using packet's timestamp
-- [x] Flags in the tcp header
-- [x] Verify of send buffer and receive buffer
-- [x] Use relative sequence number and ack number
-- [ ] Use relative timestamp
-- [ ] Test rto
-
-## License
-Please review the:
-- "LICENSE" file that is part of this distribution and in the same directory as this file
-- The header in the "tcp_probe_plus.c" file
-
+# TCP Probe Plus
 ## Description
-- Based on the "tcp_probe.c" Linux Kernel Module (LKM) by Stephen Hemminger
-- More statistics added by Lyatiss, Inc.
-	- rttvar: The Round-Trip Time Variation as per RFC 2988
-	- rto: The current retransmit timeout in milliseconds
-	- lost: The number of packets currently considered to be lost
-	- retrans: The number of packet retransmitted since the connection was established
-	- inflight: The number of packets sent but not acknowledged yet
-	- frto_counter: A counter to track the Forward RTO-Recovery algorithm as described in RFC 4138
-	- rqueue: The number of bytes currently waiting to be read in the socket buffer a.ka. recvq
-	- wqueue: The number of bytes currently waiting to be sent in the socket buffer a.k.a. sendq
-	- socket_idf: The first sequence number seen for the connection to identify it. It can be used to detect that the connection has been reset and avoid reporting incorrect throughput. 
+This program aims to probe TCP variables in the kernel space.
+It is based on [Lyatiss's tcp_probe_plus](https://github.com/lyatiss/tcp_probe_plus) project.
+I have enhanced his code to probe more variables.
+It has been tested on Linux 5.11.2.
 
-- More sampling options added by Lyatiss, Inc.
-	- There are two options
-		- Sample an ACK every sampling period (controlled by the Probe time setting as described below), or
-		- Sample an ACK only if the congestion window has changed every sampling period
-	- Sampling is done by maintaining a connections table (see the Connection hash table section below for details)
-- Add connection termination detection (reported as a magic value in the length field)
-	- The support for this functionnality is only available for kernel versions >= 2.6.22. Before that, the instrumented method (tcp_done) was defined as an inline method that can't be instrumented through jprobe. 
+## Requirements
+1. Linux kernel headers to compile kernel module
+``` bash
+sudo apt install linux-headers-$(uname -r)
+```
 
-## Contents
-This repository contains:
-- `dkms.conf` Config file for dkms
-- `Makefile` Makefile 
-- `tcp_probe_plus.c` Modified tcp_probe that does the sampling and collects more statistics (NOTE: Works on Linux kernel versions 2.6 and higher)
-- `LICENSE` GPLv2 license
+2. Python3
+``` bash
+sudo apt install python3
+```
 
-## Building the module
-1. Copy all the files in this folder to the target directory on your machine, e.g., `/usr/src/tcp_probe_plus` 
-2. (Optional) Install DKMS
-
-	On Debian:
-
-		apt-get install dkms
-    
-3. Install Linux kernel headers
-
-	On Debian, execute the following commands to determine and then install the correct kernel headers
-
-		ubuntu:/usr/src# uname -a
-		Linux ubuntu 3.2.0-4-686-pae #1 SMP Ubuntu i686 GNU/Linux
-		ubuntu:/usr/src# apt-get install linux-headers-3.2-0-4-686-pae
-	
-4. Build and install the LKM
-
-	Using DKMS
-
-		ubuntu@host:/usr/src$ sudo dkms add tcp_probe_plus
-	
-		Creating symlink /var/lib/dkms/tcp_probe_plus/1.1.6/source ->
-        	         /usr/src/tcp_probe_plus-1.1.6
-
-		DKMS: add completed.
-		ubuntu@host:/usr/src$ sudo dkms build tcp_probe_plus/1.1.6
-		ubuntu@host:/usr/src$ sudo dkms install tcp_probe_plus/1.1.6
-
-	Or from the kernel source
-
-		gentoo tcp_probe_plus # make modules modules_install
-		make -C /lib/modules/3.7.10-gentoo/build M=/usr/src/tcp_probe_plus modules
-		make[1]: Entering directory `/usr/src/linux-3.7.10-gentoo'
-		  CC [M]  /usr/src/tcp_probe_plus/tcp_probe_plus.o
-		  Building modules, stage 2.
-		  MODPOST 1 modules
-		  CC      /usr/src/tcp_probe_plus/tcp_probe_plus.mod.o
-		  LD [M]  /usr/src/tcp_probe_plus/tcp_probe_plus.ko
-		make[1]: Leaving directory `/usr/src/linux-3.7.10-gentoo'
-		make -C /lib/modules/3.7.10-gentoo/build M=/usr/src/tcp_probe_plus modules_install
-		make[1]: Entering directory `/usr/src/linux-3.7.10-gentoo'
-		  INSTALL /usr/src/tcp_probe_plus/tcp_probe_plus.ko
-		  DEPMOD  3.7.10-gentoo
-		make[1]: Leaving directory `/usr/src/linux-3.7.10-gentoo'
-		gentoo tcp_probe_plus # 
-	
-
-## Loading the module
- 
-	ubuntu@host:~$ sudo modprobe tcp_probe_plus
-	ubuntu@host:~$ sudo cat /proc/net/tcpprobe
-	2.178670575 10.160.229.127:22 10.2.146.10:65221 80 0x3d58a46e 0x3d58a46e 6 2147483647 524280 43 53 255 0 0 0 0 0 0 0x3d58a44e
-	...
+## How to use
+``` bash
+# I recommend to close segmentation offload
+sudo ethtool -K eth0 tso off gso off gro off lro off
+# Build the source code
+make
+# Probe TCP connections whose src/dst port is 5001
+# To probe all TCP connections:2 bash reaload_module.sh 0
+bash reload_module.sh 5001
+# Read the probe data into directory `output`
+python read_data.py
+```
 
 ## Exported Data
 
 The data collected by the LKM is exported through `/proc/net/tcpprobe` and is formatted using the following code (all numbers are hexadecimal to reduce the volumn of output data):
 
-
-	copied += scnprintf(tbuf+copied, n-copied, "%x %lx %lx %x %x %x %x ", 
-		p->type, (unsigned long) tv.tv_sec, (unsigned long) tv.tv_nsec,
-		ntohl(p->saddr), ntohs(p->sport), ntohl(p->daddr), ntohs(p->dport)
-	);
-	copied += scnprintf(tbuf+copied, n-copied, "%x %x %x %x ", 
-		p->length, p->tcp_flags, p->seq_num, p->ack_num
-	);
-	copied += scnprintf(tbuf+copied, n-copied, "%x %llx %x %x %x ",
-		p->ca_state, p->snd_nxt, p->snd_una, p->write_seq, p->wqueue
-	);
-	copied += scnprintf(tbuf+copied, n-copied, "%x %x %x %x %x %x %x ", 
-		p->snd_cwnd, p->ssthresh, p->snd_wnd, p->srtt, p->mdev, p->rttvar, p->rto
-	);
-	copied += scnprintf(tbuf+copied, n-copied, "%x %x %x %x %x %x %x",
-		p->packets_out, p->lost_out, p->sacked_out, p->retrans_out, p->retrans,
-		p->frto_counter, p->rto_num
-	);
-	if (p->user_agent[0] != '\0') {
-		copied += scnprintf(tbuf+copied, n-copied, " %s", p->user_agent);
-	}
+```c
+copied += scnprintf(tbuf+copied, n-copied, "%u %lu.%09lu %pI4 %u %pI4 %u ",
+    p->type, (unsigned long) tv.tv_sec, (unsigned long) tv.tv_nsec,
+    &p->saddr, ntohs(p->sport), &p->daddr, ntohs(p->dport)
+);
+copied += scnprintf(tbuf+copied, n-copied, "%u 0x%x %u %u ",
+    p->length, p->tcp_flags, p->seq_num, p->ack_num
+);
+copied += scnprintf(tbuf+copied, n-copied, "%u %u %u %u %u ",
+    p->ca_state, p->snd_nxt, p->snd_una, p->write_seq, p->wqueue
+);
+copied += scnprintf(tbuf+copied, n-copied, "%u %u %u %u %u %u %u ",
+    p->snd_cwnd, p->ssthresh, p->snd_wnd, p->srtt, p->mdev, p->rttvar, p->rto
+);
+copied += scnprintf(tbuf+copied, n-copied, "%u %u %u %u %u %u %u ",
+    p->packets_out, p->lost_out, p->sacked_out, p->retrans_out, p->retrans,
+    p->frto_counter, p->rto_num
+);
+copied += scnprintf(tbuf+copied, n-copied, "%u",
+        p->sk_pacing_rate
+);
+```
 
 | Field | Description |
 | ----- | ------------|
 | type | Record type: 0 (recv), 1 (send), 2 (timeout), 3 (conn setup), 4 (tcp done), 5 (purge)|
-| tv.tv_sec | Seconds since tcpprobe loading |
-| tv.tv_nsec | Extra milliseconds since tcpprobe loading |
+| tv.tv_sec | Seconds since tcp probe data is read |
+| tv.tv_nsec | Extra nanoseconds since tcp probe data is read |
 | saddr | Source Address |
 | sport | Source Port |
 | daddr | Destination Address |
 | dport | Destination Port |
-| length | Length of the sampled packet (65535 when this is last sample of a connection)|
+| length | Length (in Bytes) of the sampled packet (65535 when this is last sample of a connection)|
 | tcp_flags | The flags in tcp header |
-| seq_num | sequence number in the tcp header |
-| ack_num | ack number in the tcp header |
+| seq_num | Relative sequence number in the tcp header |
+| ack_num | Relative ack number in the tcp header |
 | ca_state | Congestion Avoidance state |
 | snd_nxt | Sequence number of next packet to be sent (relative to the first seen sequence number)|
 | snd_una | Sequence number of last unacknowledged packet (relative) |
 | write_seq | Tail(+1) of data held in tcp send buffer (relative) |
+| wqueue | Send buffer occupancy (in Bytes) |
 | snd_cwnd | Current congestion window size (in number of packets) |
 | ssthresh | Slow-start threshold (in number of packets) |
 | snd_wnd | Receive window size (in number of packets) |
@@ -158,14 +88,11 @@ The data collected by the LKM is exported through `/proc/net/tcpprobe` and is fo
 | retrans | Total # of retransmitted packets |
 | frto_counter | Number of spurious RTO events (After linux 3.10.0, this value is never a counter) |
 | rto_num | Number of retransmit timeout events |
-| rqueue | Number of bytes in the socket read queue |
-| wqueue | Number of bytes in the socket write queue |
-| socket_idf | First sequence number seen for the connection |
-| user_agent | User-Agent in the HTTP header |
- 
+| sk_pacing_rate | Pacing rate in Bytes per second |
+
 ## Sysctl interface
 
-This LKM offers a sysctl interface to configure it. 
+We offer a sysctl interface to configure it.
 
 ### Configuration
 
@@ -197,7 +124,7 @@ Example:
 	ubuntu@host:~$ more /proc/sys/net/tcpprobe_plus/bufsize
 	4096
 	ubuntu@host:~$ sudo sh -c 'echo 1024 > /proc/sys/net/tcpprobe_plus/bufsize'
-	
+
 
 #### Read number
 
@@ -299,7 +226,7 @@ Example:
 	ubuntu@host:~$ sudo sh -c 'echo 1000000 > /proc/sys/net/tcpprobe_plus/maxflows'
 
 #### Port filtering
-	
+
 This parameter controls the port-based filtering of the flows to track.
 
 - 0: no filtering
@@ -313,7 +240,7 @@ Example:
 
 
 #### Probe time
-	
+
 Upon receiving an ACK, the receive time of the ACK is compared with the receive time of the previous ACK for the connection. If the time difference is equal to or more than the probe time, then this ACK is eligible to be written to `/proc/net/tcpprobe`. The probe time is configurable from user space. The default probe time is 500 ms. This value could be passed as a module initialization parameter or changed using this parameter.
 
 - default is 0 ms
@@ -327,7 +254,7 @@ Example:
 
 
 #### Purge time
-	
+
 Every `purgetime` the flows that are not active anymore are removed from the flow table. The purge time is configurable from user space. The default purge time is 300 s. This value could be passed as a module initialization parameter or changed using this parameter.
 
 - default is 300 s
